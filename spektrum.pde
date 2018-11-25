@@ -2,6 +2,9 @@ import controlP5.*;
 import rtlspektrum.Rtlspektrum;
 import java.io.FileWriter;           // added by Dave N 24 Aug 2017
 import java.util.*;
+import java.time.*;
+import java.util.Date.*;
+import java.time.format.DateTimeFormatter;
 import processing.serial.*;
 
 // The spektrum:: the SV mods -- SV1SGK and SV8ARJ UI improvements.
@@ -80,7 +83,8 @@ v0.19
 
 String svVersion = "v0.19";
 
-Serial myPort;       
+Serial myPort;  
+
 
 Rtlspektrum spektrumReader;
 ControlP5 cp5;
@@ -282,6 +286,13 @@ boolean frozen = true;
 boolean vertCursor = false;
 float minMaxTextX = 10;
 float minMaxTextY = 660;
+
+//
+// Recording parameters
+//
+String recordPrefix = "./";
+boolean recordEnable = false;
+int recordTime = 60;
 
 int deltaLabelsX;
 int deltaLabelsY;
@@ -1034,7 +1045,7 @@ cp5.getController("perShowMaxToggle").moveTo(tabLabels[TAB_MEASURE]);
   
   // --------------------------------------------------------------------
   //  
-  y += 50;
+  y += 40;
   
   cp5.addButton("toggleRelMode")
     //.setValue(0)
@@ -1044,6 +1055,40 @@ cp5.getController("perShowMaxToggle").moveTo(tabLabels[TAB_MEASURE]);
     .getCaptionLabel().align(ControlP5.CENTER, ControlP5.CENTER).setText("Relative mode")
     ;
   cp5.getController("toggleRelMode").moveTo(tabLabels[TAB_MEASURE]);
+  
+  y += 5;
+  
+  uiLines[uiNextLineIndex++][TAB_MEASURE] = y;
+  
+  y += 50;
+  // Recording options
+  cp5.addToggle("toggleRecording")
+  .setPosition(x, y)
+  .setSize(20, 20)
+  .getCaptionLabel().align(ControlP5.LEFT, ControlP5.TOP_OUTSIDE).setText("Rec On/Off")
+  ;
+  cp5.getController("toggleRecording").moveTo(tabLabels[TAB_MEASURE]);
+  
+  cp5.addTextfield("recordingInterval")
+  .setSize(40,20)
+  .setPosition(x+90, y)
+  .setAutoClear(false)
+  .getCaptionLabel().align(ControlP5.LEFT, ControlP5.TOP_OUTSIDE).setText("Interval(Secs)")
+  ;
+  cp5.getController("recordingInterval").moveTo(tabLabels[TAB_MEASURE]);
+  cp5.get(Textfield.class,"recordingInterval").setText(str(recordTime));
+  
+  y += 40;
+  
+    cp5.addTextfield("recordingPrefix")
+    .setSize(160, 20)
+  .setPosition(x, y)
+    .setAutoClear(false)
+    .setFont(createFont("ARIAL",10))
+    .getCaptionLabel().align(ControlP5.LEFT, ControlP5.TOP_OUTSIDE).setText("File prefix")
+    ;
+    cp5.getController("recordingPrefix").moveTo(tabLabels[TAB_MEASURE]);
+  
   
   
   // --------------------------------------------------------------------
@@ -1190,6 +1235,25 @@ cp5.getController("perShowMaxToggle").moveTo(tabLabels[TAB_MEASURE]);
   cp5.get(Textfield.class,"cropPrcntTxt").setText(str(cropPercent));
   setRangeButton(0);
   
+}
+
+public void toggleRecording(int theValue) {
+  if (theValue > 0) {
+    recordEnable = true;
+  }
+  else {
+    recordEnable = false;
+  }
+}
+
+public void recordingPrefix(String tmpTxt) {
+  recordPrefix = tmpTxt;
+  cp5.get(Textfield.class,"recordingPrefix").setText(tmpTxt);
+}
+
+public void recordingInterval(String tmpTxt) {
+  recordTime = int(tmpTxt);
+  cp5.get(Textfield.class,"recordingInterval").setText(str(recordTime));
 }
  
  // Change the active configuration from the drop down list
@@ -1602,6 +1666,8 @@ void stop(){
   spektrumReader.stopAutoScan();
 } 
 
+long prev = System.nanoTime()/int(1.0e9);
+
 void draw(){
   background(color(#222324));
   // background(color(#220000));
@@ -1689,24 +1755,24 @@ void draw(){
   
   // Average graph 
   //
-  if ( !avgArrayHasData && avgShow  ) { 
+  if ( !avgArrayHasData) { 
 	  avgArray = new DataPoint[scaledBuffer.length]; 
   	//avgShow = false; 
   	// cp5.get(Toggle.class,"avgShow").setValue(0);
   }
-  if ( avgShow && avgArray.length != scaledBuffer.length )  {
+  if (avgArray.length != scaledBuffer.length )  {
 	  avgArray = new DataPoint[scaledBuffer.length];
   }
   
   
   // Persistent data graph 
   //
-  if ( !perArrayHasData && (perShowMin || perShowMax || perShowMed)  ) { 
+  if ( !perArrayHasData) { 
 	perArray = new DataPoint[scaledBuffer.length]; 
 	//avgShow = false; 
 	// cp5.get(Toggle.class,"avgShow").setValue(0);
   }
-  if ( (perShowMin || perShowMax || perShowMed) && perArray.length != scaledBuffer.length )  {
+  if ( perArray.length != scaledBuffer.length )  {
 	  perArray = new DataPoint[scaledBuffer.length];
   }
   
@@ -1772,9 +1838,9 @@ void draw(){
 	avgPoint = scaledBuffer[i];
 	perPoint = scaledBuffer[i];
 	
-	if (refShow && refArrayHasData ) { refPoint = refArray[i]; }
-	if (avgShow && avgArrayHasData ) { avgPoint = avgArray[i]; }
-	if ((perShowMin || perShowMax || perShowMed ) && perArrayHasData ) { perPoint = perArray[i]; }
+	if (refArrayHasData ) { refPoint = refArray[i]; }
+	if (avgArrayHasData ) { avgPoint = avgArray[i]; }
+	if (perArrayHasData ) { perPoint = perArray[i]; }
 	
   if (point == null ) continue;
 	if (avgPoint == null) avgArrayHasData = false;
@@ -1805,7 +1871,7 @@ void draw(){
 
 	// Average graph
 	//
-	if (avgShow){	  
+	if (true){	  
 		if ( !avgArrayHasData ) {	// Initialize array
 			println("STORING Average");
 			avgArray = new DataPoint[scaledBuffer.length];
@@ -1826,7 +1892,7 @@ void draw(){
 				// println("UPDATED");
 			}
 			
-			if (avgLastPoint!= null) {
+			if (avgLastPoint!= null && avgShow) {
 				graphDrawLine(avgLastPoint.x, (int)((avgLastPoint.yAvg - scaleMin) * scaleFactor), avgPoint.x,   (int)((avgPoint.yAvg - scaleMin) * scaleFactor), tmpColorAvg, 255);
 			}
 		}
@@ -1835,7 +1901,10 @@ void draw(){
 	
 	// Persistent graph
 	//
-	if (perShowMin || perShowMax || perShowMed){	  
+	// Since we now want the updating of the persistent data to occur regardless of
+	//  the "display" state, this block is now unconditional
+	//
+	if (true){	  
 		if ( !perArrayHasData ) {	// Initialize array
 			println("STORING Persistant");
 			perArray = new DataPoint[scaledBuffer.length];
@@ -1857,8 +1926,7 @@ void draw(){
 			if ( scaledBuffer[i].yAvg< perArray[i].yMin ) perArray[i].yMin = scaledBuffer[i].yAvg;
 			perArray[i].yAvg = perArray[i].yMin + ( perArray[i].yMax - perArray[i].yMin ) /2;
 			
-			
-			
+					
 			if (perLastPoint!= null) {
 				if (perShowMax)
 					graphDrawLine(perLastPoint.x, (int)((perLastPoint.yMax - scaleMin) * scaleFactor), perPoint.x,   (int)((perPoint.yMax - scaleMin) * scaleFactor), tmpColorPerMax, 200);
@@ -1996,7 +2064,42 @@ void draw(){
 //	// rect ( graphX() + 10, graphY() + 10, graphWidth() - 20, graphHeight() - 20);
  // }
    
-   
+   //
+   // We do data logging every recordTime seconds
+   //
+   long curt = System.nanoTime()/int(1.0e9);
+   if ((curt - prev ) >= recordTime && recordEnable) {
+     prev = curt;
+     String ostr = "";
+     for (int qq = 0; qq < scaledBuffer.length-1; qq++) {
+       ostr += String.format("%6.2f", avgArray[qq].yAvg) + ",";
+       ostr += String.format("%6.2f", perArray[qq].yMax) + ",";
+       ostr += String.format("%6.2f", perArray[qq].yMin);
+       ostr += " ";
+     }
+     ostr += "\n";
+     try {
+       LocalDateTime now = LocalDateTime.now();
+       DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd");
+       DateTimeFormatter formatter2 = DateTimeFormatter.ofPattern("HH,mm,ss");
+
+       String tportion = now.format(formatter);
+       String hms = now.format(formatter2);
+       
+       File fn = new File(recordPrefix+tportion+".dat");
+       if (!fn.exists()) {
+         fn.createNewFile();
+       }
+       FileWriter fw = new FileWriter(fn, true);
+       fw.write(hms+" "+String.format("%d,%d ", startFreq, stopFreq)+ostr);
+       fw.flush();
+       fw.close();
+     }
+     catch(IOException e) {
+       e.printStackTrace();
+     }
+       
+   }
 }
 //
 // end of draw routine =============================================
